@@ -1,0 +1,41 @@
+
+ Used http://www.gliffy.com/gliffy/ to draw the flight diagram.
+
+http://docs.sencha.com/ext-js/4-0/#/guide/getting_started
+http://docs.sencha.com/ext-js/4-0/#/guide/drawing_and_charting
+http://www.sencha.com/blog/ext-js-4-preview-drawing-and-charting
+http://dev.sencha.com/deploy/ChartsDemo/
+
+
+MySQL:
+
+Downloaded mysql-5.1.56-osx10.4-i686.dmg from http://mysql.azc.uam.mx/Downloads/MySQL-5.1/ .
+
+I couldn't install this package: mysql-workbench-gpl-5.2.34-osx-i686.dmg
+
+Documentation: http://dev.mysql.com/doc/refman/5.1/en/index.html
+
+sudo su
+cd /usr/local/mysql
+bin/mysqld_safe &
+
+or simply: sudo /usr/local/mysql/bin/mysqld_safe
+
+/usr/local/mysql/bin/mysql -u root -p
+mysql> show databases ;
++--------------------+
+| Database           |
++--------------------+
+| information_schema |
+| journeydeck        |
+| mysql              |
+| test               |
++--------------------+
+4 rows in set (0.05 sec)
+
+
+
+Info on configuring PHP to connect to MySQL socket:
+http://support.apple.com/kb/TS1999?viewlocale=en_US
+
+PHP documentation: http://www.php.net/manual/en/index.php

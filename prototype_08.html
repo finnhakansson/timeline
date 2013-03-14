@@ -1,0 +1,407 @@
+<html>
+<head>
+<title>Timeline</title>
+<link rel="stylesheet" type="text/css" href="ext-4.0.2a/resources/css/ext-all.css">
+<script type="text/javascript" src="ext-4.0.2a/ext-debug.js"></script>
+<script type="text/javascript">
+Ext.require('Ext.layout.container.Fit');
+
+var trip_json = {0:"101","id":"101",1:"my short trip","name":"my short trip"};
+var trip = { id: '101', name: 'my short trip' };
+var trip_events = ['1001', '1002', '1003'];
+var events = [
+    {
+        id: '1001',
+        name: 'Dubai to Jeddah',
+        type: 'flight',
+        time: 1312378200,
+        duration: 9600,
+        from_utc: '+4',
+        from_location: 'Dubai',
+        from_iata: 'DXB',
+        to_utc: '+3',
+        to_location: 'Jeddah',
+        to_iata: 'JED',
+        description: 'Flight to Jeddah, blah, blah, blah'
+    },
+    {
+        id: '1003',
+        name: 'Hotel in Jeddah',
+        type: 'accomodation',
+        time: 1312396200,
+        duration: 111600,
+        from_utc: '+3',
+        from_location: 'Jeddah',
+        from_iata: '',
+        to_utc: '',
+        to_location: '',
+        to_iata: '',
+        description: 'Description about the hotel...'
+    },
+    {
+        id: '1002',
+        name: 'Jeddah to Dubai',
+        type: 'flight',
+        time: 1312519800,
+        duration: 9600,
+        from_utc: '+3',
+        from_location: 'Jeddah',
+        from_iata: 'JED',
+        to_utc: '+4',
+        to_location: 'Dubai',
+        to_iata: 'DXB',
+        description: 'Return flight to Dubai, blah, blah, blah'
+    }
+];
+/*
+var trip_time_margin = 3 * 60 * 60; // 6 hours
+var trip_start = 1312378200;
+var trip_end = 1312519800 + 9600;
+var trip_duration = trip_end - trip_start; // 151200 seconds
+var timeline_start = trip_start - trip_time_margin;
+var timeline_end = trip_end + trip_time_margin;
+var initial_timeline_width = 800;
+var pixels_per_second = initial_timeline_width / (trip_time_margin + trip_duration + trip_time_margin);
+*/
+var initialTimelineWidth = 800;
+var initialTimelineHeight = 300;
+
+
+var columns = ['id', 'name', 'type', 'time', 'duration', 'from_utc', 'from_location', 'from_iata', 'to_utc', 'to_location', 'to_iata', 'description'];
+
+
+
+Ext.define(
+    'JD.TripEvent',
+    {
+        extend: 'Ext.data.Model',
+        fields: [
+            { name: 'id', type: 'string' },
+            { name: 'name', type: 'string' },
+            { name: 'type', type: 'string' },
+            { name: 'time', type: 'int' },
+            { name: 'duration', type: 'int' },
+            { name: 'from_utc', type: 'string' },
+            { name: 'from_location', type: 'string' },
+            { name: 'from_iata', type: 'string' },
+            { name: 'to_utc', type: 'string' },
+            { name: 'to_location', type: 'string' },
+            { name: 'to_iata', type: 'string' },
+            { name: 'description', type: 'string' }
+        ]
+    }
+);
+
+
+
+Ext.define('JD.Timeline', {
+    extend: 'Ext.draw.Component',
+    viewBox: true, // true doesn't work very well
+    resizable: {
+        dynamic: true,
+        pinned: true,
+        handles: 's e se',
+        minWidth: 600,
+        minHeight: 200,
+    },
+    style: {
+        backgroundColor: '#66a'
+    },
+    gradients: [
+        {
+            id: 'timezonePlus3ToPlus4',
+            angle: 0,
+            stops: {
+                0: {
+                    color: 'rgb(212, 40, 40)'
+                },
+                100: {
+                    color: 'rgb(180, 216, 42)'
+                }
+            }
+        },
+        {
+            id: 'timezonePlus4ToPlus3',
+            angle: 0,
+            stops: {
+                0: {
+                    color: 'rgb(180, 216, 42)'
+                },
+                100: {
+                    color: 'rgb(212, 40, 40)'
+                }
+            }
+        }
+    ],
+    tripTimeMargin: 3 * 60 * 60, // 6 hours
+
+
+    constructor: function(config) {
+        this.items = [];
+        this.width = config.width;
+        this.tripEvents = config.tripEvents || [];
+        this.numberOfTripEvents = this.tripEvents.length;
+        this.calculateDimensions();
+        config.gradients = this.gradients;
+
+        this.items.push(this.makeGrid(config));
+        this.items.push(this.makeAxis(config));
+ 
+        if (this.numberOfTripEvents) {
+            this.items.push(this.makeEvents(this.tripEvents));
+        }
+
+        Ext.apply(config, { items: this.items });
+        this.callParent([config]);
+    },
+
+
+    calculateDimensions: function() {
+        if (this.numberOfTripEvents) {
+            this.firstEvent = this.tripEvents[0];
+            this.lastEvent = this.tripEvents[this.numberOfTripEvents - 1];
+            this.tripStart = this.firstEvent.time;
+            this.tripEnd = this.lastEvent.time + this.lastEvent.duration;
+            this.tripDuration = this.tripEnd - this.tripStart;
+            this.timelineStart = this.tripStart - this.tripTimeMargin;
+            this.timelineEnd = this.tripEnd + this.tripTimeMargin;
+            this.timelineDuration = this.tripTimeMargin + this.tripDuration + this.tripTimeMargin;
+            this.timelinePixelWidth = this.width;
+            this.pixelsPerSecond = this.timelinePixelWidth / this.timelineDuration;
+        }
+    },
+
+
+    makeGrid: function(config) {
+        var me = this;
+        var gridItems = [];
+        var currentTimelinePosition = 0;
+        var currentTimezone = this.tripEvents[0].from_utc;
+
+        Ext.each(
+            me.tripEvents,
+            function(event) {
+                var newTimelinePosition = me.calculateTimelinePosition(event.time);
+                var sprite = {
+                    type: 'rect',
+                    fill: currentTimezone === '+3' ? 'rgb(212, 40, 40)' : 'rgb(180, 216, 42)',
+                    x: currentTimelinePosition,
+                    y: 0,
+                    width: newTimelinePosition - currentTimelinePosition + 1,
+                    height: 200
+                };
+                currentTimelinePosition = newTimelinePosition;
+                gridItems.push(sprite);
+                var newTimelinePosition = me.calculateTimelinePosition(event.time + event.duration);
+
+                if (event.to_utc && currentTimezone !== event.to_utc) {
+                    var newTimelinePosition = me.calculateTimelinePosition(event.time + event.duration);
+
+                    var sprite2 = {
+                        type: 'rect',
+                        fill: Number(event.from_utc) == 3 ? 'url(#timezonePlus3ToPlus4)' : 'url(#timezonePlus4ToPlus3)',
+                        x: currentTimelinePosition,
+                        y: 0,
+                        width: newTimelinePosition - currentTimelinePosition + 1,
+                        height: 200
+                    };
+                    currentTimelinePosition = newTimelinePosition;
+                    gridItems.push(sprite2);
+                    currentTimezone = event.to_utc;
+                }
+
+                return true;
+            }
+        );
+
+        var sprite = {
+            type: 'rect',
+            fill: currentTimezone === '+3' ? 'rgb(212, 40, 40)' : 'rgb(180, 216, 42)',
+            x: currentTimelinePosition,
+            y: 0,
+            width: me.calculateTimelinePosition(this.timelineEnd) - currentTimelinePosition,
+            height: 200
+        };
+        gridItems.push(sprite);
+
+        return gridItems;
+    },
+
+
+    makeEvents: function(events) {
+        var me = this;
+        var ui_events = [];
+        var i = 0;
+
+        Ext.each(
+            events,
+            function(event) {
+                var position = me.calculateTimelinePosition(event.time);
+                var duration = Math.round(event.duration * me.pixelsPerSecond);
+                var newEvent;
+                if (event.type === 'flight') {
+                    newEvent = {
+                        type: 'rect',
+                        fill: '#ffc',
+                        width: duration,
+                        height: 120,
+                        x: position,
+                        y: 10
+                    };
+                } else if (event.type === 'accomodation') {
+                    newEvent = {
+                        type: 'rect',
+                        fill: '#cfc',
+                        width: duration,
+                        height: 120,
+                        x: position,
+                        y: 10
+                    };
+                }
+                ui_events.push(newEvent);
+                var label = {
+                    type: 'text',
+                    stroke: '#000',
+                    text: event.name,
+                    x: position + 10,
+                    y: 20,
+                    rotate: {
+                        degrees: 90,
+                        x: position + 10,
+                        y: 20
+                    }
+                };
+                ui_events.push(label);
+                i++;
+                return true;
+            }
+        );
+
+        return ui_events;
+    },
+
+    calculateTimelinePosition: function(time) {
+        return Math.round((time - this.timelineStart) * this.pixelsPerSecond);
+    },
+
+    makeAxis: function(config) {
+        var me = this;
+        var axisItems = [];
+
+        axisItems.push({
+            type: 'path',
+            path: ['M', 0, 200, 'l', config.width, 0],
+            stroke: '#000000'
+        });
+
+        Ext.each(
+            this.tripEvents,
+            function(event) {
+                var pos1 = me.calculateTimelinePosition(event.time);
+                var pos2 = me.calculateTimelinePosition(event.time + event.duration);
+                axisItems.push({
+                    type: 'path',
+                    path: ['M', pos1, 200, 'l', 0, 10],
+                    stroke: '#000000'
+                });
+                axisItems.push({
+                    type: 'text',
+                    text: me.makeLocalDateString(event.time, event.from_utc),
+                    x: pos1,
+                    y: 200 + 15,
+                    rotate: {
+                        degrees: 30,
+                        x: pos1 + 15,
+                        y: 200 + 15
+                    },
+                    translation: {
+                        x: 0,
+                        y: 10
+                    }
+                });
+                axisItems.push({
+                    type: 'path',
+                    path: ['M', pos2, 200, 'l', 0, 10],
+                    stroke: '#000000'
+                });
+                return true;
+            }
+        );
+
+        return axisItems;
+    },
+
+    //
+    // Useful links about time:
+    //
+    // http://www.w3schools.com/jsref/jsref_obj_date.asp
+    // http://en.wikipedia.org/wiki/ISO_8601
+    // http://en.wikipedia.org/wiki/UTC%2B4
+    //
+    makeLocalDateString: function(epoch, timezone) {
+        timezone = Number(timezone);
+        var date = new Date((epoch + timezone * 60 * 60) * 1000);
+        var year = date.getUTCFullYear();
+        var month = date.getUTCMonth() + 1;
+        var day = date.getUTCDate();
+        var hours = date.getUTCHours();
+        var minutes = date.getUTCMinutes();
+        var localDateString = [
+            year,
+            '-',
+            month < 10 ? '0' + month : month,
+            '-',
+            day < 10 ? '0' + day : day,
+            'T',
+            hours < 10 ? '0' + hours : hours,
+            ':',
+            minutes < 10 ? '0' + minutes : minutes
+        ].join('');
+        return localDateString;
+    }
+});
+
+
+
+function init_timeline() {
+    var drawComponent = Ext.create('JD.Timeline', {
+        width: initialTimelineWidth,
+        height: initialTimelineHeight,
+        renderTo: 'timeline',
+        tripEvents: events
+    });
+}
+
+
+Ext.onReady(function() {
+    init_timeline();
+});;
+
+
+</script>
+</head>
+<body style="background-color: #ccf;">
+
+<h2>Timeline</h2>
+<br>
+<p>
+    This simple timeline is implemented with ExtJS's Ext.draw package
+    which uses SVG (or VML for IE) under the hood. Click
+    <a href="http://docs.sencha.com/ext-js/4-0/#/guide/drawing_and_charting">here</a>
+    for a technical introduction.
+</p>
+<br>
+<div id="timeline"></div>
+
+<br>
+
+<h3>TODO</h3>
+<ul>
+    <li>Drag-and-drop (or at least add) new events into the timeline.</li>
+    <li>On click on the events, pop up a small window with more info about the event.</li>
+    <li>Indicate timezones.</li>
+</ul>
+    
+</body>
+</html>
+
